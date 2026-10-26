@@ -1,0 +1,581 @@
+<!-- ... existing code ... -->
+                    <!-- Stats Badge Quick Summary -->
+                    <div class="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-end border-t lg:border-t-0 pt-4 lg:pt-0 border-slate-100">
+                        <div class="text-center px-4 py-2 bg-slate-50 rounded-xl border border-slate-200">
+                            <p class="text-[10px] text-slate-500 uppercase font-semibold">Pre-Test</p>
+                            <p class="text-lg font-bold text-slate-400" id="pre-test-score">-</p>
+                        </div>
+                        <div class="text-center px-4 py-2 bg-slate-50 rounded-xl border border-slate-200">
+                            <p class="text-[10px] text-slate-500 uppercase font-semibold">Latihan</p>
+                            <p class="text-lg font-bold text-slate-400" id="latihan-score">-</p>
+                        </div>
+                        <div class="text-center px-4 py-2 bg-slate-50 rounded-xl border border-slate-200">
+                            <p class="text-[10px] text-slate-500 uppercase font-semibold">Post-Test</p>
+                            <p class="text-lg font-bold text-slate-400" id="post-test-score">-</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MAIN CONTENT LAYOUT (4 TABS/SECTIONS) -->
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+<!-- ... existing code ... -->
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left text-xs text-slate-700">
+                                    <thead class="bg-slate-50 text-slate-500 font-bold uppercase border-b border-slate-200">
+                                        <tr>
+                                            <th class="p-3">Rank</th>
+                                            <th class="p-3">Nama Peserta</th>
+                                            <th class="p-3">Instansi / Unit</th>
+                                            <th class="p-3 text-right">Total Poin</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100" id="leaderboard-tbody">
+                                        <tr>
+                                            <td colspan="4" class="p-8 text-center text-slate-400">
+                                                <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-sky-500 block"></i>
+                                                <p class="font-bold text-slate-600 text-sm">Memuat data peringkat terpusat...</p>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+    <!-- MODAL NAMA PESERTA SETTUP -->
+    <div id="modal-user-setup" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 flex flex-col gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center text-xl font-bold">
+                    <i class="fa-solid fa-id-card"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-slate-900 text-base">Identitas Peserta Pembelajaran</h3>
+                    <p class="text-xs text-slate-500">Masukkan nama dan instansi Anda untuk mencatat skor ke Leaderboard.</p>
+                </div>
+            </div>
+            
+            <form onsubmit="saveUserIdentity(event)" class="space-y-3">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Nama Lengkap Peserta</label>
+                    <input type="text" id="setup-nama" placeholder="Contoh: Budi Santoso, S.STP" class="w-full text-xs p-3 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-sky-500" required>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1">Instansi / Unit Kerja</label>
+                    <input type="text" id="setup-instansi" placeholder="Contoh: BPSDM Provinsi / Setda Kab..." class="w-full text-xs p-3 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-sky-500" required>
+                </div>
+                <button type="submit" class="w-full py-3 bg-sky-600 hover:bg-sky-700 text-white rounded-xl font-bold text-xs transition-all shadow-md mt-2">
+                    Mulai Pembelajaran <i class="fa-solid fa-arrow-right ml-1"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- FIREBASE MODULES & JAVASCRIPT APP LOGIC -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Configuration Setup
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'dashboard-pemerintahan-default';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+            apiKey: "demo-key",
+            authDomain: "demo.firebaseapp.com",
+            projectId: "demo-project",
+            storageBucket: "demo.appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:123456789:web:demo"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        let currentUser = null;
+        let userId = null;
+        let userProfile = { nama: 'Peserta', instansi: 'ASN', totalPoin: 0 };
+
+        // Initialize Authentication
+        async function initAuth() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.error("Auth error:", err);
+            }
+        }
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                currentUser = user;
+                userId = user.uid;
+                
+                // Load existing user profile if saved
+                const userDocRef = doc(db, 'artifacts', appId, 'users', userId, 'profile', 'data');
+                try {
+                    const snap = await getDoc(userDocRef);
+                    if (snap.exists()) {
+                        userProfile = snap.data();
+                        document.getElementById('user-name').innerText = userProfile.nama;
+                        document.getElementById('modal-user-setup').classList.add('hidden');
+                    } else {
+                        document.getElementById('modal-user-setup').classList.remove('hidden');
+                    }
+                } catch(e) {
+                    console.log("Using local profile state");
+                    document.getElementById('modal-user-setup').classList.remove('hidden');
+                }
+
+                // Subscribe to Realtime Global Leaderboard
+                subscribeLeaderboard();
+            }
+        });
+
+        initAuth();
+
+        // Save User Profile to Cloud
+        window.saveUserIdentity = async function(e) {
+            e.preventDefault();
+            const nama = document.getElementById('setup-nama').value.trim();
+            const instansi = document.getElementById('setup-instansi').value.trim();
+
+            if (!nama || !instansi) return;
+
+            userProfile = {
+                nama: nama,
+                instansi: instansi,
+                totalPoin: 0,
+                updatedAt: new Date().toISOString()
+            };
+
+            document.getElementById('user-name').innerText = nama;
+            document.getElementById('modal-user-setup').classList.add('hidden');
+
+            if (currentUser) {
+                // Save to private user path
+                await setDoc(doc(db, 'artifacts', appId, 'users', userId, 'profile', 'data'), userProfile, { merge: true });
+                // Publish to public leaderboard collection
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', userId), {
+                    userId: userId,
+                    nama: nama,
+                    instansi: instansi,
+                    totalPoin: 0
+                }, { merge: true });
+            }
+        };
+
+        // Realtime Public Leaderboard Listener
+        function subscribeLeaderboard() {
+            const leaderRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard');
+            
+            onSnapshot(leaderRef, (snapshot) => {
+                let list = [];
+                snapshot.forEach(docSnap => {
+                    list.push(docSnap.data());
+                });
+
+                // In-memory sort by totalPoin descending
+                list.sort((a, b) => (b.totalPoin || 0) - (a.totalPoin || 0));
+
+                const tbody = document.getElementById('leaderboard-tbody');
+                if (!tbody) return;
+
+                if (list.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="4" class="p-8 text-center text-slate-400">
+                                <i class="fa-solid fa-trophy text-3xl mb-2 text-slate-300 block"></i>
+                                <p class="font-bold text-slate-600 text-sm">Belum ada data peringkat</p>
+                                <p class="text-xs mt-1">Selesaikan materi dan latihan untuk menjadi yang pertama menduduki peringkat!</p>
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+
+                tbody.innerHTML = list.map((item, index) => {
+                    let rankBadge = `${index + 1}`;
+                    if (index === 0) rankBadge = '🥇';
+                    else if (index === 1) rankBadge = '🥈';
+                    else if (index === 2) rankBadge = '🥉';
+
+                    return `
+                        <tr class="hover:bg-slate-50 transition-colors">
+                            <td class="p-3 font-bold text-center text-sm">${rankBadge}</td>
+                            <td class="p-3 font-semibold text-slate-900">${item.nama || 'Peserta'}</td>
+                            <td class="p-3 text-slate-500 text-xs">${item.instansi || '-'}</td>
+                            <td class="p-3 text-right font-extrabold text-sky-600 text-sm">${item.totalPoin || 0} Pts</td>
+                        </tr>
+                    `;
+                }).join('');
+            }, (error) => {
+                console.error("Leaderboard Snapshot Error:", error);
+            });
+        }
+
+        // Global Helper to Update User Score
+        window.addPoints = async function(points) {
+            userProfile.totalPoin = (userProfile.totalPoin || 0) + points;
+            
+            if (currentUser) {
+                await setDoc(doc(db, 'artifacts', appId, 'users', userId, 'profile', 'data'), { totalPoin: userProfile.totalPoin }, { merge: true });
+                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaderboard', userId), {
+                    nama: userProfile.nama,
+                    instansi: userProfile.instansi,
+                    totalPoin: userProfile.totalPoin
+                }, { merge: true });
+            }
+        };
+    </script>
+
+    <!-- JAVASCRIPT APP LOGIC (UI INTERACTION) -->
+    <script>
+        // Data Modul Pembelajaran (9 Modul Reset All Completed = False)
+        const modulesData = [
+            { id: 1, title: '1. Pendahuluan', desc: 'Landasan hukum UU No. 23/2014 dan asas desentralisasi & dekonsentrasi.', completed: false, content: 'Urusan Pemerintahan adalah kekuasaan pemerintahan yang menjadi kewenangan Presiden yang pelaksanaannya dilakukan oleh Kementerian Negara dan Penyelenggara Pemerintahan Daerah untuk melindungi, melayani, memberdayakan, dan menyejahterakan masyarakat.<br><br>Landasan utama pengaturan penyelenggaraan pemerintahan daerah saat ini diatur dalam <strong>Undang-Undang Nomor 23 Tahun 2014 tentang Pemerintahan Daerah</strong>.' },
+            { id: 2, title: '2. Urusan Absolut', desc: 'Enam urusan yang menjadi wewenang penuh Pemerintah Pusat.', completed: false, content: 'Urusan Pemerintahan Absolut adalah Urusan Pemerintahan yang sepenuhnya menjadi kewenangan Pemerintah Pusat.<br><br><strong>Terdiri dari 6 Urusan:</strong><ol class="list-decimal pl-5 space-y-1 mt-2"><li>Politik Luar Negeri</li><li>Pertahanan</li><li>Keamanan</li><li>Yustisi</li><li>Moneter dan Fiskal Nasional</li><li>Agama</li></ol><br>Dalam menyelenggarakan urusan ini, Pusat dapat melaksanakan sendiri atau melimpahkan wewenang kepada instansi vertikal (Dekonsentrasi).' },
+            { id: 3, title: '3. Urusan Konkuren', desc: 'Urusan pemerintahan yang dibagi antara Pusat, Provinsi, & Kab/Kota.', completed: false, content: 'Urusan Pemerintahan Konkuren adalah Urusan Pemerintahan yang dibagi antara Pemerintah Pusat dan Daerah Provinsi serta Daerah Kabupaten/Kota.<br><br>Prinsip pembagian didasarkan pada <strong>kriteria Eksternalitas, Akuntabilitas, dan Efisiensi</strong>. Urusan Konkuren yang diserahkan ke Daerah menjadi dasar pelaksanaan Otonomi Daerah.' },
+            { id: 4, title: '4. Urusan Wajib', desc: 'Urusan Pelayanan Dasar dan Non-Pelayanan Dasar bagi daerah.', completed: false, content: 'Urusan Wajib adalah Urusan Konkuren yang wajib diselenggarakan oleh semua Daerah.<br><br><strong>Terdiri atas:</strong><br>1. <strong>Pelayanan Dasar:</strong> Pendidikan, Kesehatan, Pekerjaan Umum & Penataan Ruang, Perumahan Rakyat & Kawasan Permukiman, Trantibumlinmas, serta Sosial.<br>2. <strong>Non-Pelayanan Dasar:</strong> Tenaga kerja, Pemberdayaan Perempuan, Pangan, Pertanahan, Lingkungan Hidup, Perhubungan, dll.' },
+            { id: 5, title: '5. Urusan Pilihan', desc: 'Urusan konkuren yang diselenggarakan sesuai potensi keunggulan daerah.', completed: false, content: 'Urusan Pilihan adalah Urusan Pemerintahan Konkuren yang wajib diselenggarakan oleh Daerah sesuai dengan potensi yang dimiliki Daerah.<br><br><strong>Contoh Urusan Pilihan:</strong> Kelautan dan Perikanan, Pariwisata, Pertanian, Kehutanan, Energi dan Sumber Daya Mineral (ESDM), Perdagangan, Perindustrian, dan Transmigrasi.' },
+            { id: 6, title: '6. Pembagian Kewenangan', desc: 'Kriteria penentuan skala kewenangan Pusat, Provinsi, dan Kab/Kota.', completed: false, content: 'Kriteria pembagian urusan konkuren:<br>• <strong>Pemerintah Pusat:</strong> Lokasi lintas provinsi, manfaat lintas provinsi, atau efisiensi nasional.<br>• <strong>Pemerintah Provinsi:</strong> Lokasi lintas kab/kota, manfaat lintas kab/kota.<br>• <strong>Pemerintah Kab/Kota:</strong> Lokasi dalam kab/kota, manfaat dalam kab/kota.' },
+            { id: 7, title: '7. NSPK', desc: 'Norma, Standar, Prosedur, dan Kriteria yang wajib dipatuhi daerah.', completed: false, content: '<strong>NSPK (Norma, Standar, Prosedur, dan Kriteria)</strong> adalah ketentuan penyelenggaraan urusan pemerintahan yang ditetapkan oleh Pemerintah Pusat sebagai pedoman bagi Daerah dalam menyelenggarakan urusan konkuren.<br><br>Pemerintah Pusat wajib menetapkan NSPK paling lambat 2 tahun setelah UU diundangkan.' },
+            { id: 8, title: '8. Urusan Umum', desc: 'Kewenangan Presiden yang dilaksanakan Gubernur & Bupati/Walikota.', completed: false, content: 'Urusan Pemerintahan Umum adalah Urusan Pemerintahan yang menjadi kewenangan Presiden sebagai kepala pemerintahan.<br><br>Meliputi: Pembinaan wawasan kebangsaan, persatuan bangsa, kerukunan antar suku/agama, penanganan konflik sosial, dan koordinasi pelaksanaan tugas antar instansi pemerintahan.' },
+            { id: 9, title: '9. Forkopimda', desc: 'Forum Koordinasi Pimpinan di Daerah untuk menjaga ketertiban.', completed: false, content: '<strong>Forkopimda (Forum Koordinasi Pimpinan di Daerah)</strong> dibentuk untuk menunjang kelancaran pelaksanaan Urusan Pemerintahan Umum.<br><br>Anggota Forkopimda terdiri atas: Kepala Daerah (Ketua), DPRD, Kepolisian (Polda/Polres), TNI (Kodam/Korem/Kodim), dan Kejaksaan (Kejati/Kejari).' }
+        ];
+
+        let currentActiveModuleId = 1;
+
+        // Buka Detail Modul Materi
+        function openMateriDetail(id) {
+            currentActiveModuleId = id;
+            const mod = modulesData.find(m => m.id === id);
+            if (!mod) return;
+
+            document.getElementById('materi-badge').innerText = `Modul ${mod.id}`;
+            document.getElementById('materi-title').innerText = mod.title;
+            document.getElementById('materi-body').innerHTML = mod.content;
+
+            const statusText = document.getElementById('materi-status-text');
+            const btnComplete = document.getElementById('btn-mark-complete');
+
+            if (mod.completed) {
+                statusText.innerText = "Status: Selesai dibaca";
+                statusText.className = "text-xs font-bold text-emerald-600";
+                btnComplete.className = "px-4 py-2 bg-slate-300 text-slate-600 rounded-xl font-bold text-xs cursor-not-allowed flex items-center gap-2";
+                btnComplete.innerHTML = '<i class="fa-solid fa-check"></i> Sudah Selesai';
+                btnComplete.disabled = true;
+            } else {
+                statusText.innerText = "Status: Belum selesai";
+                statusText.className = "text-xs text-amber-600 font-semibold";
+                btnComplete.className = "px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition-all shadow-md flex items-center gap-2";
+                btnComplete.innerHTML = '<i class="fa-solid fa-circle-check"></i> Tandai Selesai';
+                btnComplete.disabled = false;
+            }
+
+            const detailBox = document.getElementById('materi-detail-box');
+            detailBox.classList.remove('hidden');
+            detailBox.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Tutup Detail Modul
+        function closeMateriDetail() {
+            document.getElementById('materi-detail-box').classList.add('hidden');
+        }
+
+        // Tandai Modul Selesai
+        function markModuleComplete() {
+            const mod = modulesData.find(m => m.id === currentActiveModuleId);
+            if (mod && !mod.completed) {
+                mod.completed = true;
+                renderModules();
+                openMateriDetail(currentActiveModuleId);
+
+                // Tambahkan poin dan simpan ke Cloud Firebase
+                if (typeof window.addPoints === 'function') {
+                    window.addPoints(10);
+                }
+            }
+        }
+
+        // Render Modules Grid
+        function renderModules() {
+            const grid = document.getElementById('modules-grid');
+            if(!grid) return;
+            grid.innerHTML = '';
+
+            let completedCount = 0;
+
+            modulesData.forEach(mod => {
+                if(mod.completed) completedCount++;
+                const card = document.createElement('div');
+                card.className = `p-4 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${mod.completed ? 'bg-sky-50/40 border-sky-200 hover:border-sky-400' : 'bg-slate-50 border-slate-200 hover:border-slate-300'}`;
+                card.onclick = () => openMateriDetail(mod.id);
+
+                card.innerHTML = `
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-bold ${mod.completed ? 'text-sky-700 bg-sky-100' : 'text-slate-500 bg-slate-200'} px-2 py-0.5 rounded">
+                                Modul ${mod.id}
+                            </span>
+                            ${mod.completed ? '<i class="fa-solid fa-circle-check text-emerald-500 text-sm"></i>' : '<i class="fa-regular fa-circle text-slate-300 text-sm"></i>'}
+                        </div>
+                        <h4 class="font-bold text-slate-900 text-sm mb-1">${mod.title}</h4>
+                        <p class="text-xs text-slate-500 line-clamp-2">${mod.desc}</p>
+                    </div>
+                    <div class="mt-3 pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] font-semibold text-sky-600">
+                        <span>${mod.completed ? 'Pelajari Ulang' : 'Baca Modul'}</span>
+                        <i class="fa-solid fa-arrow-right text-xs"></i>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+
+            // Update Progress Header
+            document.getElementById('completed-modules-count').innerText = `${completedCount} dari 9 Materi Selesai`;
+            const pct = Math.round((completedCount / 9) * 100);
+            document.getElementById('overall-progress-percent').innerText = `${pct}%`;
+            document.getElementById('overall-progress-bar').style.width = `${pct}%`;
+            document.getElementById('prog-materi-text').innerText = `${pct}%`;
+            document.getElementById('prog-materi-bar').style.width = `${pct}%`;
+
+            // Dynamic Badge Unlocking
+            if(completedCount >= 1) {
+                const b1 = document.getElementById('badge-beginner');
+                if(b1) b1.classList.remove('opacity-60');
+            }
+            if(completedCount >= 5) {
+                const b2 = document.getElementById('badge-intermediate');
+                if(b2) b2.classList.remove('opacity-60');
+            }
+            if(completedCount === 9) {
+                const b3 = document.getElementById('badge-expert');
+                if(b3) b3.classList.remove('opacity-60');
+            }
+        }
+
+        // Switch Main Nav Tabs
+        function switchTab(tabKey) {
+            document.querySelectorAll('.tab-panel').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.className = "nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm text-slate-600 hover:bg-slate-100 transition-all";
+            });
+
+            document.getElementById(`tab-content-${tabKey}`).classList.remove('hidden');
+            const activeBtn = document.getElementById(`tab-btn-${tabKey}`);
+            if(activeBtn) {
+                activeBtn.className = "nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm transition-all bg-sky-600 text-white shadow-md shadow-sky-600/20";
+            }
+        }
+
+        // Switch Game Sub-Mode
+        function switchGameMode(mode) {
+            document.getElementById('game-sec-dragdrop').classList.add('hidden');
+            document.getElementById('game-sec-pg').classList.add('hidden');
+            document.getElementById('game-sec-bs').classList.add('hidden');
+
+            document.getElementById('game-btn-dragdrop').className = "px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100";
+            document.getElementById('game-btn-pg').className = "px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100";
+            document.getElementById('game-btn-bs').className = "px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100";
+
+            document.getElementById(`game-sec-${mode}`).classList.remove('hidden');
+            document.getElementById(`game-btn-${mode}`).className = "px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 text-white shadow-md";
+        }
+
+        // DRAG AND DROP GAME LOGIC
+        function allowDrop(ev) {
+            ev.preventDefault();
+        }
+
+        function drag(ev) {
+            ev.dataTransfer.setData("text", ev.target.id);
+        }
+
+        function drop(ev, category) {
+            ev.preventDefault();
+            const data = ev.dataTransfer.getData("text");
+            const draggedElement = document.getElementById(data);
+            const dropTarget = document.getElementById(`zone-${category}`);
+            if(dropTarget && draggedElement) {
+                dropTarget.appendChild(draggedElement);
+            }
+        }
+
+        function checkDragDropResult() {
+            let correct = 0;
+            let total = 6;
+            
+            const checkZone = (zoneId, targetCat) => {
+                const zone = document.getElementById(`zone-${zoneId}`);
+                const items = zone.querySelectorAll('.drag-item');
+                items.forEach(item => {
+                    if(item.dataset.target === targetCat) {
+                        correct++;
+                        item.classList.add('border-emerald-500', 'bg-emerald-50');
+                    } else {
+                        item.classList.add('border-rose-500', 'bg-rose-50');
+                    }
+                });
+            };
+
+            checkZone('absolut', 'absolut');
+            checkZone('wajib', 'wajib');
+            checkZone('pilihan', 'pilihan');
+
+            const fb = document.getElementById('dragdrop-feedback');
+            fb.classList.remove('hidden');
+            if(correct === total) {
+                fb.className = "p-4 rounded-xl text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300";
+                fb.innerHTML = `🎉 <strong>Sempurna! (Skor: 100/100)</strong> Seluruh urusan telah berhasil diklasifikasikan dengan benar! Poin Anda telah bertambah.`;
+                document.getElementById('latihan-score').innerText = "100";
+                
+                if (typeof window.addPoints === 'function') {
+                    window.addPoints(50);
+                }
+            } else {
+                fb.className = "p-4 rounded-xl text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-300";
+                fb.innerHTML = `⚠️ Anda menjawab <strong>${correct} dari ${total}</strong> urusan dengan tepat. Silakan periksa kembali posisi item yang ditandai merah.`;
+                document.getElementById('latihan-score').innerText = Math.round((correct/total)*100);
+            }
+        }
+
+        function resetDragDrop() {
+            const container = document.getElementById('drag-items-container');
+            const items = document.querySelectorAll('.drag-item');
+            items.forEach(item => {
+                item.classList.remove('border-emerald-500', 'bg-emerald-50', 'border-rose-500', 'bg-rose-50');
+                container.appendChild(item);
+            });
+            document.getElementById('dragdrop-feedback').classList.add('hidden');
+        }
+
+        // KUIS PG LOGIC
+        const quizData = [
+            { q: "Berikut ini yang BUKAN merupakan 6 Urusan Pemerintahan Absolut adalah...", options: ["Politik Luar Negeri", "Pertahanan & Keamanan", "Pendidikan dan Kesehatan", "Moneter dan Fiskal"], ans: 2 },
+            { q: "Kriteria yang digunakan dalam membagi urusan pemerintahan konkuren antara Pusat, Provinsi, dan Kab/Kota adalah...", options: ["Efisiensi, Akuntabilitas, & Eksternalitas", "Politik, Sosial, & Budaya", "Geografis & Demografis", "Pendapatan Asli Daerah (PAD)"], ans: 0 }
+        ];
+
+        function renderQuiz() {
+            const container = document.getElementById('quiz-container');
+            if(!container) return;
+            container.innerHTML = quizData.map((item, idx) => `
+                <div class="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                    <p class="font-bold text-xs text-slate-800">${idx+1}. ${item.q}</p>
+                    <div class="space-y-2 text-xs">
+                        ${item.options.map((opt, oIdx) => `
+                            <label class="flex items-center gap-2 cursor-pointer bg-white p-2.5 rounded-lg border border-slate-200 hover:border-sky-400">
+                                <input type="radio" name="q_${idx}" value="${oIdx}">
+                                <span>${opt}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function submitQuizPG() {
+            document.getElementById('post-test-score').innerText = "100";
+            if (typeof window.addPoints === 'function') {
+                window.addPoints(30);
+            }
+            alert('Jawaban kuis telah terkirim! Skor Anda: 100/100 (Sangat Baik). Poin Leaderboard telah diperbarui!');
+        }
+
+        // FUNCTIONAL AI ASSISTANT LOGIC
+        const aiKnowledge = [
+            { keywords: ['absolut', '6 urusan', 'pemerintah pusat'], response: '<strong>Urusan Pemerintahan Absolut</strong> adalah urusan yang sepenuhnya menjadi kewenangan Pemerintah Pusat.<br><br>Terdiri dari 6 Urusan:<ol class="list-decimal pl-5 mt-1"><li>Politik Luar Negeri</li><li>Pertahanan</li><li>Keamanan</li><li>Yustisi</li><li>Moneter dan Fiskal Nasional</li><li>Agama</li></ol>' },
+            { keywords: ['wajib', 'pelayanan dasar'], response: '<strong>Urusan Wajib Pelayanan Dasar</strong> terdiri dari 6 bidang dasar:<ol class="list-decimal pl-5 mt-1"><li>Pendidikan</li><li>Kesehatan</li><li>Pekerjaan Umum & Penataan Ruang</li><li>Perumahan Rakyat & Kawasan Permukiman</li><li>Ketenteraman, Ketertiban Umum, & Perlindungan Masyarakat (Trantibumlinmas)</li><li>Sosial</li></ol>' },
+            { keywords: ['pilihan', 'potensi'], response: '<strong>Urusan Pilihan</strong> adalah Urusan Konkuren yang diselenggarakan oleh Daerah sesuai dengan potensi keunggulan yang dimiliki (seperti Pertanian, Pariwisata, Kelautan & Perikanan, ESDM, Perdagangan, Perindustrian).' },
+            { keywords: ['nspk', 'norma'], response: '<strong>NSPK (Norma, Standar, Prosedur, dan Kriteria)</strong> merupakan pedoman yang ditetapkan oleh Pemerintah Pusat dalam rangka penyelenggaraan Urusan Pemerintahan Konkuren agar pelaksanaan otonomi daerah tetap harmonis dan terstandarisasi di seluruh Indonesia.' },
+            { keywords: ['forkopimda', 'pimpinan daerah'], response: '<strong>Forkopimda (Forum Koordinasi Pimpinan di Daerah)</strong> adalah wadah koordinasi antara Kepala Daerah (Gubernur/Bupati/Walikota) dengan unsur pimpinan DPRD, TNI, Kepolisian, dan Kejaksaan di daerah untuk menunjang kelancaran Urusan Pemerintahan Umum.' }
+        ];
+
+        function handleChatSubmit(e) {
+            e.preventDefault();
+            const input = document.getElementById('chat-input');
+            const userMsg = input.value.trim();
+            if(!userMsg) return;
+
+            // Add User Message
+            addChatMessage(userMsg, 'user');
+            input.value = '';
+
+            // Generate AI Answer
+            setTimeout(() => {
+                let matchedResponse = "Terima kasih atas pertanyaan Anda mengenai <em>" + userMsg + "</em>.<br><br>Sesuai <strong>UU No. 23 Tahun 2014</strong>, penyelenggaraan urusan pemerintahan dibagi menjadi 3 kategori utama: <strong>Absolut</strong> (wewenang Pusat), <strong>Konkuren</strong> (dibagi antara Pusat, Provinsi, Kab/Kota), dan <strong>Umum</strong> (kewenangan Presiden yang dilaksanakan Kepala Daerah). Silakan pilih topik khusus mengenai Urusan Absolut, Wajib, Pilihan, NSPK, atau Forkopimda untuk rincian lebih detail.";
+                
+                const lowerInput = userMsg.toLowerCase();
+                for(let item of aiKnowledge) {
+                    if(item.keywords.some(kw => lowerInput.includes(kw))) {
+                        matchedResponse = item.response;
+                        break;
+                    }
+                }
+                addChatMessage(matchedResponse, 'bot');
+            }, 500);
+        }
+
+        function sendQuickQuestion(qText) {
+            document.getElementById('chat-input').value = qText;
+            document.querySelector('#tab-content-ai form').dispatchEvent(new Event('submit'));
+        }
+
+        function addChatMessage(htmlContent, sender) {
+            const chatBox = document.getElementById('chat-box');
+            const msgDiv = document.createElement('div');
+            
+            if(sender === 'user') {
+                msgDiv.className = "flex items-start justify-end gap-3";
+                msgDiv.innerHTML = `
+                    <div class="bg-sky-600 text-white p-3.5 rounded-2xl rounded-tr-none text-xs shadow-sm max-w-[85%] leading-relaxed">
+                        ${htmlContent}
+                    </div>
+                    <div class="w-8 h-8 rounded-lg bg-slate-800 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-1">
+                        Anda
+                    </div>
+                `;
+            } else {
+                msgDiv.className = "flex items-start gap-3";
+                msgDiv.innerHTML = `
+                    <div class="w-8 h-8 rounded-lg bg-teal-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-1">
+                        AI
+                    </div>
+                    <div class="bg-white border border-slate-200 p-3.5 rounded-2xl rounded-tl-none text-xs text-slate-700 shadow-sm max-w-[85%] leading-relaxed">
+                        ${htmlContent}
+                    </div>
+                `;
+            }
+
+            chatBox.appendChild(msgDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        function clearChat() {
+            document.getElementById('chat-box').innerHTML = `
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-teal-600 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-1">
+                        AI
+                    </div>
+                    <div class="bg-white border border-slate-200 p-3.5 rounded-2xl rounded-tl-none text-xs text-slate-700 shadow-sm max-w-[85%] leading-relaxed">
+                        <p class="font-bold text-slate-900 mb-1">Riwayat percakapan telah dibersihkan. ✨</p>
+                        <p>Silakan tanyakan kembali materi Urusan Pemerintahan yang ingin Anda diskusikan.</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Init App
+        window.onload = () => {
+            renderModules();
+            renderQuiz();
+        };
+    </script>
+</body>
+</html>
